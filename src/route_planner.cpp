@@ -10,7 +10,8 @@ RoutePlanner::RoutePlanner(RouteModel &model, float start_x, float start_y, floa
 
     // TODO 2: Use the m_Model.FindClosestNode method to find the closest nodes to the starting and ending coordinates.
     // Store the nodes you find in the RoutePlanner's start_node and end_node attributes.
-
+    this->start_node = &model.FindClosestNode(start_x, start_y);
+    this->end_node   = &model.FindClosestNode(end_x, end_y);
 }
 
 
@@ -20,7 +21,7 @@ RoutePlanner::RoutePlanner(RouteModel &model, float start_x, float start_y, floa
 // - Node objects have a distance method to determine the distance to another node.
 
 float RoutePlanner::CalculateHValue(RouteModel::Node const *node) {
-
+    return node->distance(*this->end_node);
 }
 
 
@@ -32,7 +33,14 @@ float RoutePlanner::CalculateHValue(RouteModel::Node const *node) {
 // - For each node in current_node.neighbors, add the neighbor to open_list and set the node's visited attribute to true.
 
 void RoutePlanner::AddNeighbors(RouteModel::Node *current_node) {
-
+    current_node->FindNeighbors();
+    for (auto neighbor : current_node->neighbors) {
+        neighbor->parent = current_node;
+        neighbor->h_value = RoutePlanner::CalculateHValue(neighbor);
+        neighbor->g_value = current_node->g_value + current_node->distance(*neighbor);
+        this->open_list.push_back(neighbor);
+        neighbor->visited = true;
+    }
 }
 
 
@@ -43,8 +51,25 @@ void RoutePlanner::AddNeighbors(RouteModel::Node *current_node) {
 // - Remove that node from the open_list.
 // - Return the pointer.
 
-RouteModel::Node *RoutePlanner::NextNode() {
+// To sort, a function to compare F-values is needed.
+bool compare_F(RouteModel::Node *a, RouteModel::Node *b) {
+    float a_f = a->g_value + a->h_value;
+    float b_f = b->g_value + b->h_value;
+    return a_f > b_f;
+}
 
+RouteModel::Node *RoutePlanner::NextNode() {
+    // do some sorting
+    std::sort(this->open_list.begin(), this->open_list.end(), compare_F);
+
+    // pointer to the node in the list with the lowest sum.
+    auto lowest_f = this->open_list.back();
+
+    // remove that node from the open_list.
+    this->open_list.pop_back();
+
+    // return the pointer.
+    return lowest_f;
 }
 
 
@@ -62,10 +87,25 @@ std::vector<RouteModel::Node> RoutePlanner::ConstructFinalPath(RouteModel::Node 
     std::vector<RouteModel::Node> path_found;
 
     // TODO: Implement your solution here.
+    RouteModel::Node *parent_node = nullptr;
+    while (current_node != this->start_node) {
+        // get parent node
+        parent_node = current_node->parent;
+
+        // get distance to parent node, and tally
+        distance += current_node->distance(*parent_node);
+
+        // add current node to path_found
+        path_found.push_back(*current_node);
+
+        // make the parent_node the current_node
+        current_node = parent_node;
+    }
+    path_found.push_back(*current_node);
+    std::reverse(path_found.begin(), path_found.end());
 
     distance *= m_Model.MetricScale(); // Multiply the distance by the scale of the map to get meters.
     return path_found;
-
 }
 
 
@@ -81,4 +121,18 @@ void RoutePlanner::AStarSearch() {
 
     // TODO: Implement your solution here.
 
+    // need to prime the open_list with the start_node
+    this->open_list.push_back(start_node);
+    this->start_node->visited = true;
+
+    while (!this->open_list.empty()) {
+        current_node = this->NextNode();
+        // current_node->distance(*this->end_node) == 0
+        if ( current_node == this->end_node ) {
+            this->m_Model.path = this->ConstructFinalPath(current_node);
+            return;
+        } else {
+            this->AddNeighbors(current_node);
+        }
+    }
 }
